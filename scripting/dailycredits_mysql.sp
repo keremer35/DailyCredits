@@ -1,7 +1,7 @@
 #pragma semicolon 1
 
 #define PLUGIN_AUTHOR "Simon -edit by Nachtfrische"
-#define PLUGIN_VERSION "2.2"
+#define PLUGIN_VERSION "2.2.1"
 
 #include <sourcemod>
 #include <sdktools>
@@ -15,17 +15,18 @@ ConVar g_hDailyEnable;
 ConVar g_hDailyCredits;
 ConVar g_hDailyBonus;
 ConVar g_hDailyMax;
+ConVar g_hDailyLast;
 ConVar g_hDailyReset;
 ConVar g_hDailyInterval;
 char CurrentDate[20];
 int ConnectTime[MAXPLAYERS + 1];
 
-public Plugin myinfo = 
+public Plugin myinfo =
 {
-	name = "[Store] Daily Credits", 
-	author = PLUGIN_AUTHOR, 
-	description = "Daily credits for regular players with MySQL support.", 
-	version = PLUGIN_VERSION, 
+	name = "[Store] Daily Credits",
+	author = PLUGIN_AUTHOR,
+	description = "Daily credits for regular players with MySQL support.",
+	version = PLUGIN_VERSION,
 	url = "yash1441@yahoo.com"
 };
 
@@ -34,15 +35,18 @@ public void OnPluginStart()
 	LoadTranslations("dailycredits.phrases");
 	CreateConVar("sm_daily_credits_version", PLUGIN_VERSION, "Daily Credits Version", FCVAR_DONTRECORD | FCVAR_NOTIFY | FCVAR_REPLICATED | FCVAR_SPONLY);
 	g_hDailyEnable = CreateConVar("sm_daily_credits_enable", "1", "Enable Daily Credits? 0 = disable, 1 = enable", 0, true, 0.0, true, 1.0);
-	g_hDailyCredits = CreateConVar("sm_daily_credits_amount", "10", "Amount of credits you recieve.", 0, true, 0.0);
-	g_hDailyBonus = CreateConVar("sm_daily_credits_bonus", "2", "Increase / Addition of the credits on consecutive days.", 0, true, 0.0);
-	g_hDailyMax = CreateConVar("sm_daily_credits_max", "50", "Maximum amount of credits that you can get daily.", 0, true, 0.0);
+	g_hDailyCredits = CreateConVar("sm_daily_credits_amount", "50", "Amount of credits you recieve.", 0, true, 0.0);
+	g_hDailyBonus = CreateConVar("sm_daily_credits_bonus", "25", "Increase / Addition of the credits on consecutive days.", 0, true, 0.0);
+	g_hDailyMax = CreateConVar("sm_daily_credits_max", "500", "Maximum amount of credits that you can get daily.", 0, true, 0.0);
+	g_hDailyLast = CreateConVar("sm_daily_last", "250", "Extra credits to earn in the last day", 0, true, 0.0);
 	g_hDailyReset = CreateConVar("sm_daily_credits_resetperiod", "7", "Amount of days after which the streak should reset itself. Set to 0 to disable.", 0, true, 0.0);
 	g_hDailyInterval = CreateConVar("sm_daily_credits_interval", "0", "Number of minutes required by the player to play on the server before getting daily credits. Set to 0 to immediately give credits upon using !daily.", 0, true, 0.0);
-	
+
 	AutoExecConfig(true, "dailycredits");
 	RegConsoleCmd("sm_daily", Cmd_Daily);
 	RegConsoleCmd("sm_dailies", Cmd_Daily);
+	RegConsoleCmd("sm_gun", Cmd_Daily);
+	RegConsoleCmd("sm_gunluk", Cmd_Daily);
 	InitializeDB();
 }
 
@@ -103,7 +107,7 @@ public Action Cmd_Daily(int client, int args)
 		}
 	}
 	else LogError("Failed to get Steam ID");
-	
+
 	return Plugin_Handled;
 }
 
@@ -115,8 +119,9 @@ stock void GiveCredits(int client, bool FirstTime)
 	{
 		if (FirstTime)
 		{
+			int sonraki = GetConVarInt(g_hDailyCredits) + (( GetConVarInt(g_hDailyBonus)) + GetConVarInt(g_hDailyBonus));
 			Store_SetClientCredits(client, Store_GetClientCredits(client) + GetConVarInt(g_hDailyCredits));
-			CPrintToChatEx(client, client, "%t", "CreditsRecieved", GetConVarInt(g_hDailyCredits));
+			CPrintToChatEx(client, client, "%t", "CreditsRecieved", GetConVarInt(g_hDailyCredits), sonraki);
 			Format(buffer, sizeof(buffer), "INSERT IGNORE INTO players (steam_id, last_connect, bonus_amount) VALUES ('%s', %d, 1)", steamId, StringToInt(CurrentDate));
 			SQL_TQuery(db, SQLErrorCheckCallback, buffer);
 		}
@@ -132,39 +137,43 @@ stock void GiveCredits(int client, bool FirstTime)
 			delete query;
 			int date1 = StringToInt(CurrentDate);
 			int resetDaysSetting = GetConVarInt(g_hDailyReset);
-			
+			int sonraki = GetConVarInt(g_hDailyCredits) + (bonus * ( GetConVarInt(g_hDailyBonus)) + GetConVarInt(g_hDailyBonus));
+
 			if (resetDaysSetting > 0) {  //needed since after the reset, bonus starts at 0
 				resetDaysSetting--;
 			}
-			
+
 			//streak is currently continuing
 			if ((date1 - date2) == 1)
 			{
 				int TotalCredits = GetConVarInt(g_hDailyCredits) + (bonus * GetConVarInt(g_hDailyBonus)); //bonus can't start at 1, since the first day would get the player a bonus as well
 				if (TotalCredits > GetConVarInt(g_hDailyMax))TotalCredits = GetConVarInt(g_hDailyMax);
-				Store_SetClientCredits(client, Store_GetClientCredits(client) + TotalCredits);
-				
-				if (resetDaysSetting != 0)
-				{
-					if (bonus >= resetDaysSetting)
-					{
-						CPrintToChatEx(client, client, "%t", "LastCreditsRecieved", TotalCredits);
-						Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, 0, steamId);
-						CPrintToChatEx(client, client, "%t", "ResetDays", resetDaysSetting + 1);
-					}
-					else
-					{
-						CPrintToChatEx(client, client, "%t", "CreditsRecieved", TotalCredits);
-						Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, bonus + 1, steamId);
-						CPrintToChatEx(client, client, "%t", "CurrentDay", bonus + 1);
-					}
-				}
-				else
-				{
-					CPrintToChatEx(client, client, "%t", "CreditsRecieved", TotalCredits);
-					Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, bonus + 1, steamId);
-					CPrintToChatEx(client, client, "%t", "CurrentDay", bonus + 1);
-				}
+				//Store_SetClientCredits(client, Store_GetClientCredits(client) + TotalCredits);
+
+						if (resetDaysSetting != 0)
+						{
+							if (bonus >= resetDaysSetting)
+							{
+								CPrintToChatEx(client, client, "%t", "LastCreditsRecieved", TotalCredits, GetConVarInt(g_hDailyLast));
+								Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, 0, steamId);
+								CPrintToChatEx(client, client, "%t", "ResetDays", resetDaysSetting + 1);
+								Store_SetClientCredits(client, Store_GetClientCredits(client) + TotalCredits + GetConVarInt(g_hDailyLast));
+							}
+							else
+							{
+								CPrintToChatEx(client, client, "%t", "CreditsRecieved", TotalCredits, sonraki);
+								Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, bonus + 1, steamId);
+								CPrintToChatEx(client, client, "%t", "CurrentDay", bonus + 1, GetConVarInt(g_hDailyLast), GetConVarInt(g_hDailyReset));
+								Store_SetClientCredits(client, Store_GetClientCredits(client) + TotalCredits);
+							}
+						}
+						else
+						{
+							CPrintToChatEx(client, client, "%t", "CreditsRecieved", TotalCredits, sonraki);
+							Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = %i WHERE steam_id = '%s'", date1, bonus + 1, steamId);
+							CPrintToChatEx(client, client, "%t", "CurrentDay", bonus + 1, GetConVarInt(g_hDailyLast), GetConVarInt(g_hDailyReset));
+							Store_SetClientCredits(client, Store_GetClientCredits(client) + TotalCredits);
+						}
 				SQL_TQuery(db, SQLErrorCheckCallback, buffer);
 			}
 			//already recieved credits today
@@ -175,9 +184,9 @@ stock void GiveCredits(int client, bool FirstTime)
 			//streak ended
 			else if ((date1 - date2) > 1)
 			{
-				CPrintToChatEx(client, client, "%t", "StreakEnded", bonus);
+				CPrintToChatEx(client, client, "%t", "StreakEnded", bonus, GetConVarInt(g_hDailyInterval), GetConVarInt(g_hDailyCredits));
 				Store_SetClientCredits(client, Store_GetClientCredits(client) + GetConVarInt(g_hDailyCredits));
-				CPrintToChatEx(client, client, "%t", "CreditsRecieved", GetConVarInt(g_hDailyCredits));
+				CPrintToChatEx(client, client, "%t", "CreditsRecieved", GetConVarInt(g_hDailyCredits), sonraki);
 				Format(buffer, sizeof(buffer), "UPDATE players SET last_connect = %i, bonus_amount = 1 WHERE steam_id = '%s'", date1, steamId);
 				SQL_TQuery(db, SQLErrorCheckCallback, buffer);
 			}
@@ -198,4 +207,4 @@ public void SQLErrorCheckCallback(Handle owner, Handle hndl, const char[] error,
 {
 	if (!StrEqual(error, ""))
 		LogError(error);
-} 
+}
