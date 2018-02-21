@@ -1,6 +1,6 @@
 #pragma semicolon 1
 
-#define PLUGIN_AUTHOR "Simon -edit by Nachtfrische"
+#define PLUGIN_AUTHOR "Simon -edit by Nachtfrische -A few things have been added by keremer35"
 #define PLUGIN_VERSION "2.2.1"
 
 #include <sourcemod>
