@@ -5,5 +5,6 @@ The configuration file "dailycredits.cfg" will be automatically created at plugi
 
 - Orignal plugin by **yash1441**
 - Modifications by **Nachtfrische**
+- A few things have been added by **keremer35**
 
 For more information, check out the thread here: [AlliedModders Thread](https://forums.alliedmods.net/showthread.php?t=300143)
